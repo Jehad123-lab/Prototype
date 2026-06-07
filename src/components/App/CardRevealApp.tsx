@@ -411,20 +411,12 @@ const StarfieldAndFireworks = ({
     };
 
     if (phase === 'opening') {
-      launchBurst(-1.5, 1.2, -1, '#22c55e', 35, 1.0);
-      launchBurst(1.5, 1.2, -1, '#4ade80', 35, 1.0);
+      // Instantly clear all active and lingering particles
+      activeParticles.current = [];
     } else if (phase === 'flipping') {
-      launchBurst(0, 1.0, -1.5, '#ffffff', 40, 1.4);
-      launchBurst(0, 1.0, -1.5, '#22c55e', 20, 1.0);
+      activeParticles.current = [];
     } else if (phase === 'revealed') {
-      const interval = setInterval(() => {
-        const x = (Math.random() - 0.5) * 6;
-        const y = 1.0 + Math.random() * 3.0;
-        const greens = ['#22c55e', '#4ade80', '#ffffff'];
-        const col = greens[Math.floor(Math.random() * greens.length)];
-        launchBurst(x, y, -4, col, 15, 0.7);
-      }, 3500);
-      return () => clearInterval(interval);
+      activeParticles.current = [];
     }
   }, [phase]);
 
@@ -459,8 +451,8 @@ const StarfieldAndFireworks = ({
       }
     }
 
-    // 2. Continuous Background Drifting Embers
-    const ambientRate = (phase === 'opening' || phase === 'revealed') ? 0.08 : 0.03;
+    // 2. Continuous Background Drifting Embers (disabled after cutting to keep presentation ultra-clean)
+    const ambientRate = (phase === 'carousel' || phase === 'ready') ? 0.03 : 0.0;
     if (Math.random() < ambientRate) {
       const isGold = Math.random() > 0.85;
       const color = isGold 
@@ -713,7 +705,7 @@ const CardSet = ({ phase, setPhase }) => {
       onComplete: () => {
         setPhase('opening');
         isSlicingAuto.current = false;
-        setTimeout(() => setSliceActive(false), 300);
+        setSliceActive(false);
       }
     });
   };
@@ -761,6 +753,7 @@ const CardSet = ({ phase, setPhase }) => {
     if (sliceProgressRef.current > 0.85) {
       // Completed drag! Slicing completes
       setPhase('opening');
+      setSliceActive(false);
     } else {
       // Not dragged far enough, reset elegantly
       const startP = sliceProgressRef.current;
@@ -807,7 +800,7 @@ const CardSet = ({ phase, setPhase }) => {
             packBottomRef.current.scale.set(1, 1, 1);
         }
         if (cardGroupRef.current) {
-            cardGroupRef.current.position.set(0, -6, 0);
+            cardGroupRef.current.position.set(0, -6, -0.8);
             cardGroupRef.current.rotation.set(0, Math.PI, 0);
             cardGroupRef.current.scale.set(1, 1, 1);
         }
@@ -883,13 +876,9 @@ const CardSet = ({ phase, setPhase }) => {
         // Force slice progress to 100% on animation start
         setSliceProgress(1.0);
 
-        // Extinguish/dissolve the golden laser slicing glow line right as the packet splits
-        const laserOpacityObj = { val: 1.0 };
-        tl.to(laserOpacityObj, {
-            val: 0.0,
+        // Turn off slice line when packet splits (never animating opacity)
+        tl.to({}, {
             duration: 0.4,
-            ease: 'power1.out',
-            onUpdate: () => setSliceLaserOpacity(laserOpacityObj.val),
             onComplete: () => {
                 setSliceActive(false);
             }
@@ -920,15 +909,6 @@ const CardSet = ({ phase, setPhase }) => {
                 ease: 'power2.in'
             }, 0.6);
 
-            // Animate top opacity fade out perfectly to absolute 0
-            const topOpacityObj = { val: 1.0 };
-            tl.to(topOpacityObj, {
-                val: 0.0,
-                duration: 1.0,
-                ease: 'power2.out',
-                onUpdate: () => setTopOpacity(topOpacityObj.val)
-            }, 0.4);
-
             // Sliced bottom package sliver goes slowly down completely off-screen and fades away perfectly
             tl.to(packBottomRef.current.position, { 
                 y: -6.0, 
@@ -937,21 +917,12 @@ const CardSet = ({ phase, setPhase }) => {
                 duration: 2.2, 
                 ease: 'power2.inOut' 
             }, 0);
-
-            // Animate bottom opacity fade out perfectly to absolute 0
-            const btmOpacityObj = { val: 1.0 };
-            tl.to(btmOpacityObj, {
-                val: 0.0,
-                duration: 1.8,
-                ease: 'power2.out',
-                onUpdate: () => setBottomOpacity(btmOpacityObj.val)
-            }, 0.2);
         }
 
-        // 2. Real Card pops up vertically out from inside the bottom package pocket
+        // 2. Real Card pops up vertically out from inside the bottom package pocket (positioned behind the pack at z: -0.8)
         tl.fromTo(cardGroupRef.current.position, 
-            { x: 0, y: -0.4, z: 0.0 }, 
-            { x: 0, y: 0.42, z: 0.0, duration: 1.6, ease: 'back.out(1.1)' }, 0.15
+            { x: 0, y: -0.4, z: -0.8 }, 
+            { x: 0, y: 0.42, z: -0.8, duration: 1.6, ease: 'back.out(1.1)' }, 0.15
         );
 
         tl.fromTo(cardGroupRef.current.scale, 
@@ -1059,7 +1030,7 @@ const CardSet = ({ phase, setPhase }) => {
            </group>
            
            {/* Custom golden high-intensity slice drawing curve */}
-           <SliceGlowLine progress={sliceProgress} active={sliceActive || phase === 'opening'} direction={sliceDirection} opacity={sliceLaserOpacity} />
+           <SliceGlowLine progress={sliceProgress} active={sliceActive} direction={sliceDirection} opacity={sliceLaserOpacity} />
 
            {/* Interactive sparks emitted from drag tip */}
            {sliceActive && (
@@ -1117,7 +1088,7 @@ const CardSet = ({ phase, setPhase }) => {
          </mesh>
       )}
 
-      <group ref={cardGroupRef} position={[0, -6, 0]} rotation={[0, Math.PI, 0]}>
+      <group ref={cardGroupRef} position={[0, -6, -0.8]} rotation={[0, Math.PI, 0]}>
         {/* Graded Slab Acrylic Outer Case Protective Capsule Shield */}
         <mesh position={[0, 0, 0]}>
           <boxGeometry args={[2.68, 4.18, 0.075]} />
@@ -1313,9 +1284,9 @@ export const CardRevealApp = () => {
             100% { transform: rotate(360deg); }
           }
           @keyframes pulse {
-            0% { opacity: 0.5; transform: scale(0.95); }
-            50% { opacity: 1; transform: scale(1.05); }
-            100% { opacity: 0.5; transform: scale(0.95); }
+            0% { transform: scale(0.95); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(0.95); }
           }
         `}
       </style>
@@ -1323,7 +1294,7 @@ export const CardRevealApp = () => {
         {phase === 'loading' && <div style={styles.loader} />}
       </div>
 
-      <Canvas style={{ width: '100%', height: '100%', opacity: phase === 'loading' ? 0.3 : 1, transition: 'opacity 0.5s' }}>
+      <Canvas style={{ width: '100%', height: '100%' }}>
         <PerspectiveCamera makeDefault position={[0, 0, 7]} fov={50} />
         {/* Environment mapping is essential for realistic foil/metalness reflection */}
         <Environment preset="city" />
@@ -1356,17 +1327,19 @@ export const CardRevealApp = () => {
         </div>
       )}
 
-      <div style={{...(styles.actionTextContainer as React.CSSProperties), opacity: (phase === 'ready' || phase === 'waiting_flip') ? 1 : 0, transition: 'opacity 0.5s'}}>
-        {phase === 'ready' ? (
-           <p style={{...(styles.actionText as React.CSSProperties), animation: 'pulse 2s infinite'}}>
-             Tap to open
-           </p>
-        ) : (
-           <p style={{...(styles.actionText as React.CSSProperties), animation: 'pulse 2s infinite'}}>
-             Tap to continue
-           </p>
-        )}
-      </div>
+      {(phase === 'ready' || phase === 'waiting_flip') && (
+        <div style={styles.actionTextContainer as React.CSSProperties}>
+          {phase === 'ready' ? (
+             <p style={{...(styles.actionText as React.CSSProperties), animation: 'pulse 2s infinite'}}>
+               Tap to open
+             </p>
+          ) : (
+             <p style={{...(styles.actionText as React.CSSProperties), animation: 'pulse 2s infinite'}}>
+               Tap to continue
+             </p>
+          )}
+        </div>
+      )}
 
     </div>
   );
